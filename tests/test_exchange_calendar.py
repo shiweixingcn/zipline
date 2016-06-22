@@ -118,21 +118,32 @@ class ExchangeCalendarTestBase(object):
         cls.end_date = cls.answers.index[-1]
         cls.calendar = cls.calendar_class(cls.start_date, cls.end_date)
 
+        cls.one_minute = pd.Timedelta(minutes=1)
+        cls.one_hour = pd.Timedelta(hours=1)
+
     def test_calculated_against_csv(self):
         assert_frame_equal(self.calendar.schedule, self.answers)
 
     def test_is_open_on_minute(self):
+        one_minute = pd.Timedelta(minutes=1)
+
         for market_minute in self.answers.market_open:
             market_minute_utc = market_minute.tz_localize('UTC')
             # The exchange should be classified as open on its first minute
-            self.assertTrue(
-                self.calendar.is_open_on_minute(market_minute_utc)
-            )
+            self.assertTrue(self.calendar.is_open_on_minute(market_minute_utc))
+
             # Decrement minute by one, to minute where the market was not open
-            pre_market = market_minute_utc - pd.Timedelta(minutes=1)
-            self.assertFalse(
-                self.calendar.is_open_on_minute(pre_market)
-            )
+            pre_market = market_minute_utc - one_minute
+            self.assertFalse(self.calendar.is_open_on_minute(pre_market))
+
+        for market_minute in self.answers.market_close:
+            close_minute_utc = market_minute.tz_localize('UTC')
+            # should be open on its last minute
+            self.assertTrue(self.calendar.is_open_on_minute(close_minute_utc))
+
+            # increment minute by one minute, should be closed
+            post_market = close_minute_utc + one_minute
+            self.assertFalse(self.calendar.is_open_on_minute(post_market))
 
     def test_open_and_close(self):
         for index, row in self.answers.iterrows():
@@ -141,6 +152,95 @@ class ExchangeCalendarTestBase(object):
                              row['market_open'].tz_localize('UTC'))
             self.assertEqual(o_and_c[1],
                              row['market_close'].tz_localize('UTC'))
+
+    def verify_minute(self, calendar, minute,
+                      next_open_answer, prev_open_answer,
+                      next_close_answer, prev_close_answer):
+        self.assertEqual(
+            calendar.next_open(minute),
+            next_open_answer
+        )
+
+        self.assertEqual(
+            self.calendar.previous_open(minute),
+            prev_open_answer
+        )
+
+        self.assertEqual(
+            self.calendar.next_close(minute),
+            next_close_answer
+        )
+
+        self.assertEqual(
+            self.calendar.previous_close(minute),
+            prev_close_answer
+        )
+
+    def test_next_prev_open_close(self):
+        # for each session, check:
+        # - the minute before the open
+        # - the first minute of the session
+        # - the second minute of the session
+        # - the minute before the close
+        # - the last minute of the session
+        # - the first minute after the close
+        answers_to_use = self.answers[1:-2]
+
+        for idx, info in enumerate(answers_to_use.iterrows()):
+            open_minute = info[1].market_open
+            close_minute = info[1].market_close
+
+            minute_before_open = open_minute - self.one_minute
+
+            # answers_to_use starts at the second element of self.answers,
+            # so self.answers.iloc[idx] is one element before, and
+            # self.answers.iloc[idx + 2] is one element after the current
+            # element
+            previous_open = self.answers.iloc[idx].market_open
+            next_open = self.answers.iloc[idx + 2].market_open
+            previous_close = self.answers.iloc[idx].market_close
+            next_close = self.answers.iloc[idx + 2].market_close
+
+            # minute before open
+            self.verify_minute(self.calendar, minute_before_open,
+                open_minute, previous_open,
+                close_minute, previous_close
+            )
+
+            # open minute
+            self.verify_minute(self.calendar, open_minute,
+                next_open, previous_open,
+                close_minute, previous_close
+            )
+
+            # second minute of session
+            self.verify_minute(self.calendar, open_minute + self.one_minute,
+                               next_open, open_minute,
+                               close_minute, previous_close)
+
+            # minute before the close
+            self.verify_minute(self.calendar, close_minute - self.one_minute,
+                               next_open, open_minute,
+                               close_minute, previous_close)
+
+            # the close
+            self.verify_minute(self.calendar, close_minute,
+                               next_open, open_minute,
+                               next_close, previous_close)
+
+            # minute after the close
+            self.verify_minute(self.calendar, close_minute + self.one_minute,
+                               next_open, open_minute,
+                               next_close, close_minute)
+
+    def test_next_prev_exchange_minute(self):
+        all_minutes = self.calendar.all_trading_minutes
+
+        for idx, minute in enumerate(all_minutes[:-2]):
+            self.assertEqual(
+                all_minutes[idx + 1],
+                self.calendar.next_exchange_minute(minute)
+            )
 
     def test_no_nones_from_open_and_close(self):
         """

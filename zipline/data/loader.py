@@ -47,7 +47,7 @@ ONE_HOUR = pd.Timedelta(hours=1)
 
 nyse_cal = get_calendar('NYSE')
 trading_day_nyse = nyse_cal.day
-trading_days_nyse = nyse_cal.all_trading_days
+trading_sessions_nyse = nyse_cal.all_exchange_sessions
 
 
 def last_modified_time(path):
@@ -96,7 +96,7 @@ def has_data_for_dates(series_or_df, first_date, last_date):
 
 
 def load_market_data(trading_day=trading_day_nyse,
-                     trading_days=trading_days_nyse,
+                     trading_sessions=trading_sessions_nyse,
                      bm_symbol='^GSPC'):
     """
     Load benchmark returns and treasury yield curves for the given calendar and
@@ -116,7 +116,7 @@ def load_market_data(trading_day=trading_day_nyse,
     trading_day : pandas.CustomBusinessDay, optional
         A trading_day used to determine the latest day for which we
         expect to have data.  Defaults to an NYSE trading day.
-    trading_days : pd.DatetimeIndex, optional
+    trading_sessions : pd.DatetimeIndex, optional
         A calendar of trading days.  Also used for determining what cached
         dates we should expect to have cached. Defaults to the NYSE calendar.
     bm_symbol : str, optional
@@ -136,7 +136,7 @@ def load_market_data(trading_day=trading_day_nyse,
     '1month', '3month', '6month',
     '1year','2year','3year','5year','7year','10year','20year','30year'
     """
-    first_date = trading_days[0]
+    first_date = trading_sessions[0]
     now = pd.Timestamp.utcnow()
 
     # We expect to have benchmark and treasury data that's current up until
@@ -153,7 +153,9 @@ def load_market_data(trading_day=trading_day_nyse,
 
     # We'll attempt to download new data if the latest entry in our cache is
     # before this date.
-    last_date = trading_days[trading_days.get_loc(now, method='ffill') - 2]
+    last_date = trading_sessions[
+        trading_sessions.get_loc(now, method='ffill') - 2
+    ]
 
     br = ensure_benchmark_data(
         bm_symbol,
