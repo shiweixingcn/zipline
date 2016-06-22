@@ -42,6 +42,7 @@ from zipline.utils.calendars._calendar_helpers import (
 )
 
 from zipline.utils.memoize import remember_last
+from numpy import searchsorted
 
 start_default = pd.Timestamp('1990-01-01', tz='UTC')
 end_base = pd.Timestamp('today', tz='UTC')
@@ -281,17 +282,20 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
             dtype='datetime64[ns]',
         )
 
-        self.first_trading_day = _all_days[0]
-        self.last_trading_day = _all_days[-1]
-        self.early_closes = DatetimeIndex(
-            _special_closes.map(self.session_date)
-        )
-
         self.market_opens_nanos = self.schedule.market_open.values.\
             astype('datetime64[ns]').astype(np.int64)
 
         self.market_closes_nanos = self.schedule.market_close.values.\
             astype('datetime64[ns]').astype(np.int64)
+
+        self._trading_minutes_nanos = self.all_trading_minutes.values.\
+            astype('datetime64[ns]').astype(np.int64)
+
+        self.first_trading_day = _all_days[0]
+        self.last_trading_day = _all_days[-1]
+        self.early_closes = DatetimeIndex(
+            _special_closes.map(self.session_date)
+        )
 
     def is_open_on_minute(self, dt):
         """
@@ -383,9 +387,8 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
 
     def next_exchange_minute(self, dt):
         """
-        Given a dt, return the next exchange minute.
-
-        Raises KeyError if the given timestamp is not an exchange minute.
+        Given a dt, return the next exchange minute.  If the given dt is not
+        an exchange minute, returns the next exchange open.
 
         Parameters
         ----------
@@ -397,11 +400,8 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
         pd.Timestamp
             The next exchange minute.
         """
-
-        # FIXME bounds check
-        return self.all_trading_minutes[
-            self.all_trading_minutes.get_loc(dt) + 1
-        ]
+        idx = next_divider_idx(self._trading_minutes_nanos, dt.value)
+        return pd.Timestamp(self._trading_minutes_nanos[idx], tz='UTC')
 
     def previous_exchange_minute(self, dt):
         """
@@ -420,35 +420,53 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
             The previous exchange minute.
         """
 
-        # FIXME bounds check
-        return self.all_trading_minutes[
-            self.all_trading_minutes.get_loc(dt) - 1
-        ]
+        idx = previous_divider_idx(self._trading_minutes_nanos, dt.value)
+        return pd.Timestamp(self._trading_minutes_nanos[idx], tz='UTC')
 
-    def session_date(self, dt):
+    def session_date(self, dt, direction="next"):
         """
-        Given an exchange minute, get the name of its containing session.
-
-        Raises KeyError if the given minute is not an exchange minute.
+        Given a minute, get the label of its containing session.
 
         Parameters
         ----------
         dt : pd.Timestamp
             The dt for which to get the containing session.
 
+        direction: str
+            "next" (default) means that if the given dt is not part of a
+            session, the next session's label is returned.
+
+            "previous" means that if the given dt is not part of a session,
+            the previous session's label is returned.
+
+            "none" means that a KeyError will be raised if the given
+            dt is not part of an session.
+
         Returns
         -------
         pd.Timestamp
-            The session date of the containing session.  This is a UTC midnight
+            The label of the containing session.  This is a UTC midnight
             timestamp.
         """
-        open_idx, close_idx = self._open_and_close_idx(dt)
 
-        if open_idx == close_idx:
-            raise ValueError("Given dt {0} is not an exchange "
-                             "minute!".format(dt))
+        idx = searchsorted(self.market_closes_nanos, dt.value)
+        current_or_next_session = self.schedule.index[idx]
 
-        return self.schedule.index[close_idx]
+        if direction == "previous":
+            if not is_open(self.market_opens_nanos, self.market_closes_nanos,
+                           dt.value):
+                # if the exchange is closed, use the previous session
+                return self.schedule.index[idx - 1]
+        elif direction == "none":
+            if not is_open(self.market_opens_nanos, self.market_closes_nanos,
+                           dt.value):
+                # if the exchange is closed, blow up
+                raise ValueError("The given dt is not an exchange minute!")
+        elif direction != "next":
+            # invalid direction
+            raise ValueError("Invalid direction parameter: {0}".format(direction))
+
+        return current_or_next_session
 
     def next_session_date(self, session_date):
         """

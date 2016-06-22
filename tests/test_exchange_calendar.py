@@ -153,7 +153,7 @@ class ExchangeCalendarTestBase(object):
             self.assertEqual(o_and_c[1],
                              row['market_close'].tz_localize('UTC'))
 
-    def verify_minute(self, calendar, minute,
+    def _verify_minute(self, calendar, minute,
                       next_open_answer, prev_open_answer,
                       next_close_answer, prev_close_answer):
         self.assertEqual(
@@ -202,59 +202,139 @@ class ExchangeCalendarTestBase(object):
             next_close = self.answers.iloc[idx + 2].market_close
 
             # minute before open
-            self.verify_minute(self.calendar, minute_before_open,
+            self._verify_minute(self.calendar, minute_before_open,
                 open_minute, previous_open,
                 close_minute, previous_close
             )
 
             # open minute
-            self.verify_minute(self.calendar, open_minute,
+            self._verify_minute(self.calendar, open_minute,
                 next_open, previous_open,
                 close_minute, previous_close
             )
 
             # second minute of session
-            self.verify_minute(self.calendar, open_minute + self.one_minute,
+            self._verify_minute(self.calendar, open_minute + self.one_minute,
                                next_open, open_minute,
                                close_minute, previous_close)
 
             # minute before the close
-            self.verify_minute(self.calendar, close_minute - self.one_minute,
+            self._verify_minute(self.calendar, close_minute - self.one_minute,
                                next_open, open_minute,
                                close_minute, previous_close)
 
             # the close
-            self.verify_minute(self.calendar, close_minute,
+            self._verify_minute(self.calendar, close_minute,
                                next_open, open_minute,
                                next_close, previous_close)
 
             # minute after the close
-            self.verify_minute(self.calendar, close_minute + self.one_minute,
+            self._verify_minute(self.calendar, close_minute + self.one_minute,
                                next_open, open_minute,
                                next_close, close_minute)
 
     def test_next_prev_exchange_minute(self):
         all_minutes = self.calendar.all_trading_minutes
 
-        for idx, minute in enumerate(all_minutes[:-2]):
+        # test 200,000 minutes because it takes too long to do the rest.
+        # 200k minutes = ~2 years, which provides pretty good coverage.
+        for idx, minute in enumerate(all_minutes[1:200000]):
             self.assertEqual(
-                all_minutes[idx + 1],
+                all_minutes[idx + 2],
                 self.calendar.next_exchange_minute(minute)
             )
 
-    def test_no_nones_from_open_and_close(self):
-        """
-        Ensures that, for all minutes in a week, the open_and_close method
-        never returns a tuple of Nones.
-        """
-        start_week = Timestamp('11/18/2012 12:00AM', tz='EST')
-        end_week = start_week + Timedelta(days=7)
-        minutes_in_week = date_range(start_week, end_week, freq='Min')
+            self.assertEqual(
+                all_minutes[idx],
+                self.calendar.previous_exchange_minute(minute)
+            )
 
-        for dt in minutes_in_week:
-            open, close = self.calendar.open_and_close(dt)
-            self.assertIsNotNone(open, "Open value is None")
-            self.assertIsNotNone(close, "Close value is None")
+        # test a couple of non-market minutes
+        for open_minute in self.answers.market_open[1:]:
+            hour_before_open = open_minute - self.one_hour
+            self.assertEqual(
+                open_minute.tz_localize("UTC"),
+                self.calendar.next_exchange_minute(hour_before_open)
+            )
+
+        for close_minute in self.answers.market_close[1:]:
+            hour_after_close = close_minute + self.one_hour
+            self.assertEqual(
+                close_minute.tz_localize("UTC"),
+                self.calendar.previous_exchange_minute(hour_after_close)
+            )
+
+    def test_session_date(self):
+
+        for idx, info in enumerate(self.answers[1:-2].iterrows()):
+            session_label = info[1].name
+            open_minute = info[1].market_open
+            close_minute = info[1].market_close
+            hour_into_session = open_minute + self.one_hour
+
+            minute_before_session = open_minute - self.one_minute
+            minute_after_session = close_minute + self.one_minute
+
+            next_session_label = self.answers.iloc[idx + 2].name
+            previous_session_label = self.answers.iloc[idx].name
+
+            # verify that minutes inside a session resolve correctly
+            minutes_that_resolve_to_this_session = [
+                self.calendar.session_date(open_minute),
+                self.calendar.session_date(open_minute, direction="next"),
+                self.calendar.session_date(open_minute, direction="previous"),
+                self.calendar.session_date(open_minute, direction="none"),
+                self.calendar.session_date(hour_into_session),
+                self.calendar.session_date(hour_into_session,
+                                           direction="next"),
+                self.calendar.session_date(hour_into_session,
+                                           direction="previous"),
+                self.calendar.session_date(hour_into_session,
+                                           direction="none"),
+                self.calendar.session_date(close_minute),
+                self.calendar.session_date(close_minute, direction="next"),
+                self.calendar.session_date(close_minute, direction="previous"),
+                self.calendar.session_date(close_minute, direction="none"),
+                self.calendar.session_date(minute_before_session),
+                self.calendar.session_date(minute_before_session,
+                                           direction="next"),
+                self.calendar.session_date(minute_after_session,
+                                           direction="previous"),
+                session_label
+            ]
+
+            self.assertTrue(all(x == minutes_that_resolve_to_this_session[0]
+                                for x in minutes_that_resolve_to_this_session))
+
+            minutes_that_resolve_to_next_session = [
+                self.calendar.session_date(minute_after_session),
+                self.calendar.session_date(minute_after_session,
+                                           direction="next"),
+                next_session_label
+            ]
+
+            self.assertTrue(all(x == minutes_that_resolve_to_next_session[0]
+                                for x in minutes_that_resolve_to_next_session))
+
+            self.assertEqual(
+                self.calendar.session_date(minute_before_session,
+                                           direction="previous"),
+                previous_session_label
+            )
+
+    # def test_no_nones_from_open_and_close(self):
+    #     """
+    #     Ensures that, for all minutes in a week, the open_and_close method
+    #     never returns a tuple of Nones.
+    #     """
+    #     start_week = Timestamp('11/18/2012 12:00AM', tz='EST')
+    #     end_week = start_week + Timedelta(days=7)
+    #     minutes_in_week = date_range(start_week, end_week, freq='Min')
+    #
+    #     for dt in minutes_in_week:
+    #         open, close = self.calendar.open_and_close(dt)
+    #         self.assertIsNotNone(open, "Open value is None")
+    #         self.assertIsNotNone(close, "Close value is None")
 
 
 class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
