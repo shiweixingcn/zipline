@@ -468,24 +468,29 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
 
         return current_or_next_session
 
-    def next_session_date(self, session_date):
+    def next_session_label(self, session_label):
         """
-        Given a session date, returns the next session date.
+        Given a session label, returns the next session label.
 
         Parameters
         ----------
-        session_date: pd.Timestamp
-            A session date (UTC midnight timestamp)
+        session_label: pd.Timestamp
+            A session label (UTC midnight timestamp)
 
         Returns
         -------
         pd.Timestamp
-            The next session date (UTC midnight timestamp)
+            The next session label (UTC midnight timestamp)
         """
-        session_date_idx = self.schedule.index.get_loc(session_date)
-        return self.schedule.index[session_date_idx + 1]
+        session_date_idx = self.schedule.index.get_loc(session_label)
+        try:
+            return self.schedule.index[session_date_idx + 1]
+        except IndexError:
+            if session_date_idx == len(self.schedule.index) - 1:
+                raise ValueError("There is no next session as this is the end"
+                                 "of the exchange calendar.")
 
-    def previous_session_date(self, session_date):
+    def previous_session_label(self, session_date):
         """
         Given a session date, returns the previous session date.
 
@@ -500,23 +505,27 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
             The previous session date (UTC midnight timestamp)
         """
         session_date_idx = self.schedule.index.get_loc(session_date)
+        if session_date_idx == 0:
+            raise ValueError("There is no previous session as this is the"
+                             "beginning of the exchange calendar.")
+
         return self.schedule.index[session_date_idx - 1]
 
-    def minutes_for_session(self, session_date):
+    def minutes_for_session(self, session_label):
         """
         Given a session date, return the minutes for that session.
 
         Parameters
         ----------
-        session_date: pd.Timestamp
-            A session date (UTC midnight timestamp)
+        session_label: pd.Timestamp
+            A session label (UTC midnight timestamp)
 
         Returns
         -------
         pd.DateTimeIndex
             All the minutes for the given session.
         """
-        session_data = self.schedule.loc[session_date]
+        session_data = self.schedule.loc[session_label]
         return self.all_trading_minutes[
             self.all_trading_minutes.slice_indexer(
                 session_data.market_open,
@@ -524,54 +533,64 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
             )
         ]
 
-    def exchange_sessions_in_range(self, start_session_date, end_session_date):
+    def exchange_sessions_in_range(self, start_session_label,
+                                   end_session_label):
         """
-        Given start and end session dates, return all the sessions in that
+        Given start and end session labels, return all the sessions in that
         range, inclusive.
 
         Parameters
         ----------
-        start_session_date: UTC midnight timestamp
+        start_session_label: UTC midnight timestamp
             The session date representing the start of the desired range.
 
-        end_session_date: UTC midnight timestamp
+        end_session_label: UTC midnight timestamp
             The session date representing the end of the desired range.
 
         Returns
         -------
         pd.DatetimeIndex
-            The session dates in the desired range.
+            The session labels in the desired range.
         """
-        return self.all_trading_days[
-            self.all_trading_days.slice_indexer(
-                start_session_date,
-                end_session_date
+        return self.all_exchange_sessions[
+            self.all_exchange_sessions.slice_indexer(
+                start_session_label,
+                end_session_label
             )
         ]
 
     def exchange_minutes_in_range(self, start_minute, end_minute):
         """
-        Given start and end exchange minutes, return all the exchange minutes
+        Given start and end minutes, return all the exchange minutes
         in that range, inclusive.
+
+        Given minutes don't need to be exchange minutes (can be when the
+        exchange is closed).
 
         Parameters
         ----------
         start_minute: pd.Timestamp
-            The exchange minute representing the start of the desired range.
+            The minute representing the start of the desired range.
 
         end_minute: pd.Timestamp
-            The exchange minute representing the end of the desired range.
+            The minute representing the end of the desired range.
 
         Returns
         -------
         pd.DatetimeIndex
             The exchange minutes in the desired range.
         """
-        return self.all_trading_minutes[
-            self.all_trading_minutes.slice_indexer(
+        start_idx = searchsorted(self._trading_minutes_nanos,
+                                 start_minute.value)
 
-            )
-        ]
+        end_idx = searchsorted(self._trading_minutes_nanos,
+                               end_minute.value)
+
+        if end_minute.value == self._trading_minutes_nanos[end_idx]:
+            # if the end minute is a market minute, increase by 1
+            end_idx += 1
+
+        return self.all_trading_minutes[start_idx:end_idx]
 
     def open_and_close(self, session_date):
         """

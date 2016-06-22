@@ -21,14 +21,13 @@ from os.path import (
 from unittest import TestCase
 from collections import namedtuple
 
+import numpy as np
 import pandas as pd
 import pytz
 from pandas import (
     read_csv,
     datetime,
     Timestamp,
-    Timedelta,
-    date_range,
 )
 from pandas.util.testing import assert_frame_equal
 
@@ -265,7 +264,6 @@ class ExchangeCalendarTestBase(object):
             )
 
     def test_session_date(self):
-
         for idx, info in enumerate(self.answers[1:-2].iterrows()):
             session_label = info[1].name
             open_minute = info[1].market_open
@@ -322,19 +320,160 @@ class ExchangeCalendarTestBase(object):
                 previous_session_label
             )
 
-    # def test_no_nones_from_open_and_close(self):
-    #     """
-    #     Ensures that, for all minutes in a week, the open_and_close method
-    #     never returns a tuple of Nones.
-    #     """
-    #     start_week = Timestamp('11/18/2012 12:00AM', tz='EST')
-    #     end_week = start_week + Timedelta(days=7)
-    #     minutes_in_week = date_range(start_week, end_week, freq='Min')
-    #
-    #     for dt in minutes_in_week:
-    #         open, close = self.calendar.open_and_close(dt)
-    #         self.assertIsNotNone(open, "Open value is None")
-    #         self.assertIsNotNone(close, "Close value is None")
+            # make sure that exceptions are raised at the right time
+            with self.assertRaises(ValueError):
+                self.calendar.session_date(open_minute, "asdf")
+
+            with self.assertRaises(ValueError):
+                self.calendar.session_date(minute_before_session,
+                                           direction="none")
+
+    def test_next_prev_session_label(self):
+        session_labels = self.answers.index[1:-2]
+        max_idx = len(session_labels) - 1
+
+        # the very first session
+        first_session_label = self.answers.index[0]
+        with self.assertRaises(ValueError):
+            self.calendar.previous_session_date(first_session_label)
+
+        # all the sessions in the middle
+        for idx, session in enumerate(session_labels):
+            if idx < max_idx:
+                self.assertEqual(
+                    self.calendar.next_session_label(session),
+                    session_labels[idx + 1]
+                )
+
+            if idx > 0:
+                self.assertEqual(
+                    self.calendar.previous_session_label(session),
+                    session_labels[idx - 1]
+                )
+
+        # the very last session
+        last_session_label = self.answers.index[-1]
+        with self.assertRaises(ValueError):
+            self.calendar.next_session_date(last_session_label)
+
+    @staticmethod
+    def _find_full_session(calendar):
+        for session_label in calendar.schedule.index:
+            if session_label not in calendar.early_closes:
+                return session_label
+
+        return None
+
+    def test_minutes_for_session(self):
+        # full session
+        # find a session that isn't an early close.  start from the first
+        # session, should be quick.
+        full_session_label = self._find_full_session(self.calendar)
+        if full_session_label is None:
+            raise ValueError("Cannot find a full session to test!")
+
+        minutes = self.calendar.minutes_for_session(full_session_label)
+        _open, _close = self.calendar.open_and_close(full_session_label)
+
+        np.testing.assert_array_equal(
+            minutes,
+            pd.date_range(start=_open, end=_close, freq="min")
+        )
+
+        # early close session
+        early_close_session_label = self.calendar.early_closes[0]
+        minutes_for_early_close = \
+            self.calendar.minutes_for_session(early_close_session_label)
+        _open, _close = self.calendar.open_and_close(early_close_session_label)
+
+        np.testing.assert_array_equal(
+            minutes_for_early_close,
+            pd.date_range(start=_open, end=_close, freq="min")
+        )
+
+    def test_exchange_sessions_in_range(self):
+        # pick two sessions
+        session_count = len(self.calendar.schedule.index)
+
+        first_idx = session_count / 3
+        second_idx = 2 * first_idx
+
+        first_session = self.calendar.schedule.index[first_idx]
+        second_session = self.calendar.schedule.index[second_idx]
+
+        answer_key = \
+            self.calendar.schedule.index[first_idx:second_idx + 1]
+
+        np.testing.assert_array_equal(
+            answer_key,
+            self.calendar.exchange_sessions_in_range(first_session,
+                                                     second_session)
+        )
+
+    def test_exchange_minutes_in_range(self):
+        # choose a 3-session period that surrounds a shortened session
+        shortened_session = self.calendar.early_closes[0]
+        shortened_session_idx = \
+            self.calendar.schedule.index.get_loc(shortened_session)
+
+        session_before = self.calendar.schedule.index[
+            shortened_session_idx - 1
+        ]
+        session_after = self.calendar.schedule.index[shortened_session_idx + 1]
+
+        first_open, first_close = self.calendar.open_and_close(session_before)
+        minute_before_first_open = first_open - self.one_minute
+
+        middle_open, middle_close = \
+            self.calendar.open_and_close(shortened_session)
+
+        last_open, last_close = self.calendar.open_and_close(session_after)
+        minute_after_last_close = last_close + self.one_minute
+
+        # get all the minutes between first_open and last_close
+        minutes1 = self.calendar.exchange_minutes_in_range(
+            first_open,
+            last_close
+        )
+        minutes2 = self.calendar.exchange_minutes_in_range(
+            minute_before_first_open,
+            minute_after_last_close
+        )
+
+        np.testing.assert_array_equal(minutes1, minutes2)
+
+        # manually construct the minutes
+        all_minutes = np.concatenate([
+            pd.date_range(
+                start=first_open,
+                end=first_close,
+                freq="min"
+            ),
+            pd.date_range(
+                start=middle_open,
+                end=middle_close,
+                freq="min"
+            ),
+            pd.date_range(
+                start=last_open,
+                end=last_close,
+                freq="min"
+            )
+        ])
+
+        np.testing.assert_array_equal(all_minutes, minutes1)
+
+    def test_open_and_close(self):
+        for index, row in self.answers.iterrows():
+            session_label = row.name
+            open_answer = row.market_open.tz_localize("UTC")
+            close_answer = row.market_close.tz_localize("UTC")
+
+            found_open, found_close = \
+                self.calendar.open_and_close(session_label)
+
+            self.assertEqual(open_answer, found_open)
+            self.assertEqual(close_answer, found_close)
 
 
 class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
@@ -356,13 +495,11 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
 
         start_dt = Timestamp('1/1/12', tz='UTC')
         end_dt = Timestamp('12/31/13', tz='UTC')
-        trading_days = self.calendar.trading_days(start=start_dt, end=end_dt)
+        sessions = self.calendar.exchange_sessions_in_range(start_dt, end_dt)
 
-        day_after_new_years_sunday = datetime(
-            2012, 1, 2, tzinfo=pytz.utc)
+        day_after_new_years_sunday = datetime(2012, 1, 2, tzinfo=pytz.utc)
 
-        self.assertNotIn(day_after_new_years_sunday,
-                         trading_days.index,
+        self.assertNotIn(day_after_new_years_sunday, sessions,
                          """
  If NYE falls on a weekend, {0} the Monday after is a holiday.
  """.strip().format(day_after_new_years_sunday)
@@ -371,8 +508,7 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         first_trading_day_after_new_years_sunday = datetime(
             2012, 1, 3, tzinfo=pytz.utc)
 
-        self.assertIn(first_trading_day_after_new_years_sunday,
-                      trading_days.index,
+        self.assertIn(first_trading_day_after_new_years_sunday, sessions,
                       """
  If NYE falls on a weekend, {0} the Tuesday after is the first trading day.
  """.strip().format(first_trading_day_after_new_years_sunday)
@@ -386,11 +522,9 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         # 20 21 22 23 24 25 26
         # 27 28 29 30 31
 
-        new_years_day = datetime(
-            2013, 1, 1, tzinfo=pytz.utc)
+        new_years_day = datetime(2013, 1, 1, tzinfo=pytz.utc)
 
-        self.assertNotIn(new_years_day,
-                         trading_days.index,
+        self.assertNotIn(new_years_day, sessions,
                          """
  If NYE falls during the week, e.g. {0}, it is a holiday.
  """.strip().format(new_years_day)
@@ -399,8 +533,7 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         first_trading_day_after_new_years = datetime(
             2013, 1, 2, tzinfo=pytz.utc)
 
-        self.assertIn(first_trading_day_after_new_years,
-                      trading_days.index,
+        self.assertIn(first_trading_day_after_new_years, sessions,
                       """
  If the day after NYE falls during the week, {0} \
  is the first trading day.
