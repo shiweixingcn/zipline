@@ -1,18 +1,17 @@
 """
 Tests for slicing pipeline terms.
 """
-<<<<<<< HEAD
-from numpy import where
-from pandas import Int64Index, Timestamp
-=======
-from numpy import full_like, nan
+from numpy import (
+    full_like,
+    nan,
+    where,
+)
 from pandas import (
     DataFrame,
     date_range,
     Int64Index,
     Timestamp,
 )
->>>>>>> 8ffd644... Tests
 from pandas.util.testing import assert_frame_equal
 from scipy.stats import (
     linregress,
@@ -61,7 +60,6 @@ class SliceTestCase(WithSeededRandomPipelineEngine, ZiplineTestCase):
     def init_class_fixtures(cls):
         super(SliceTestCase, cls).init_class_fixtures()
 
-<<<<<<< HEAD
         # Using the date at index 14 as the start date because when running
         # pipelines, especially those involving correlations or regressions, we
         # want to make sure there are enough days to look back on. The end date
@@ -69,12 +67,6 @@ class SliceTestCase(WithSeededRandomPipelineEngine, ZiplineTestCase):
         # five day span.
         cls.pipeline_start_date = cls.trading_days[14]
         cls.pipeline_end_date = cls.trading_days[18]
-=======
-        day = cls.trading_schedule.day
-        dates = date_range('2015-02-01', '2015-02-28', freq=day, tz='UTC')
-        cls.start_date = dates[14]
-        cls.end_date = dates[18]
->>>>>>> 8ffd644... Tests
 
         # Random input for factors.
         cls.col = TestingDataSet.float_col
