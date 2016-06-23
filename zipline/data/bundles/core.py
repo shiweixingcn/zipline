@@ -32,7 +32,10 @@ from zipline.utils.preprocess import preprocess
 from zipline.utils.calendars import get_calendar
 
 nyse_cal = get_calendar('NYSE')
-exchange_sessions = nyse_cal.all_exchange_sessions
+
+# FIXME this is probably not ideal
+exchange_sessions = nyse_cal.all_periods.to_timestamp().tz_localize('UTC')
+
 open_and_closes = nyse_cal.schedule
 
 

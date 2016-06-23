@@ -404,8 +404,7 @@ class ExchangeCalendarTestBase(object):
 
         np.testing.assert_array_equal(
             answer_key,
-            self.calendar.exchange_sessions_in_range(first_period,
-                                                     second_period)
+            self.calendar.periods_in_range(first_period, second_period)
         )
 
     def test_exchange_minutes_in_range(self):
@@ -479,7 +478,57 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
     answer_key_filename = 'nyse'
     calendar_class = NYSEExchangeCalendar
 
-    def test_newyears(self):
+    def test_2012(self):
+        # holidays we expect:
+        holidays_2012 = [
+            pd.Period("1/2/2012"),
+            pd.Period("1/16/2012"),
+            pd.Period("2/20/2012"),
+            pd.Period("4/6/2012"),
+            pd.Period("5/28/2012"),
+            pd.Period("7/4/2012"),
+            pd.Period("9/3/2012"),
+            pd.Period("11/22/2012"),
+            pd.Period("12/25/2012")
+        ]
+
+        for period in holidays_2012:
+            self.assertNotIn(period, self.calendar.all_periods)
+
+        # early closes we expect:
+        early_closes_2012 = [
+            pd.Period("7/3/2012"),
+            pd.Period("11/23/2012"),
+            pd.Period("12/24/2012")
+        ]
+
+        for early_close_period in early_closes_2012:
+            self.assertIn(early_close_period, self.calendar.early_closes)
+
+    def test_special_holidays(self):
+        # 9/11
+        # Sept 11, 12, 13, 14 2001
+        self.assertNotIn(pd.Period("9/11/2001"), self.calendar.all_periods)
+        self.assertNotIn(pd.Period("9/12/2001"), self.calendar.all_periods)
+        self.assertNotIn(pd.Period("9/13/2001"), self.calendar.all_periods)
+        self.assertNotIn(pd.Period("9/14/2001"), self.calendar.all_periods)
+
+        # Hurricane Sandy
+        # Oct 29, 30 2012
+        self.assertNotIn(pd.Period("10/29/2012"), self.calendar.all_periods)
+        self.assertNotIn(pd.Period("10/30/2012"), self.calendar.all_periods)
+
+        # various national days of mourning
+        # Gerald Ford - 1/2/2007
+        self.assertNotIn(pd.Period("1/2/2007"), self.calendar.all_periods)
+
+        # Ronald Reagan - 6/11/2004
+        self.assertNotIn(pd.Period("6/11/2004"), self.calendar.all_periods)
+
+        # Richard Nixon - 4/27/1994
+        self.assertNotIn(pd.Period("4/27/1994"), self.calendar.all_periods)
+
+    def test_new_years(self):
         """
         Check whether the ExchangeCalendar contains certain dates.
         """
@@ -491,22 +540,19 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         # 22 23 24 25 26 27 28
         # 29 30 31
 
-        start_dt = Timestamp('1/1/12', tz='UTC')
-        end_dt = Timestamp('12/31/13', tz='UTC')
-        sessions = self.calendar.exchange_sessions_in_range(start_dt, end_dt)
+        start_period = pd.Period("1/1/12")
+        end_period = pd.Period('12/31/13')
+        periods = self.calendar.periods_in_range(start_period, end_period)
 
-        day_after_new_years_sunday = datetime(2012, 1, 2, tzinfo=pytz.utc)
-
-        self.assertNotIn(day_after_new_years_sunday, sessions,
+        day_after_new_years_sunday = pd.Period("1/2/2012")
+        self.assertNotIn(day_after_new_years_sunday, periods,
                          """
  If NYE falls on a weekend, {0} the Monday after is a holiday.
  """.strip().format(day_after_new_years_sunday)
         )
 
-        first_trading_day_after_new_years_sunday = datetime(
-            2012, 1, 3, tzinfo=pytz.utc)
-
-        self.assertIn(first_trading_day_after_new_years_sunday, sessions,
+        first_trading_day_after_new_years_sunday = pd.Period("1/3/2012")
+        self.assertIn(first_trading_day_after_new_years_sunday, periods,
                       """
  If NYE falls on a weekend, {0} the Tuesday after is the first trading day.
  """.strip().format(first_trading_day_after_new_years_sunday)
@@ -520,18 +566,15 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         # 20 21 22 23 24 25 26
         # 27 28 29 30 31
 
-        new_years_day = datetime(2013, 1, 1, tzinfo=pytz.utc)
-
-        self.assertNotIn(new_years_day, sessions,
+        new_years_day = pd.Period("1/1/2013")
+        self.assertNotIn(new_years_day, periods,
                          """
  If NYE falls during the week, e.g. {0}, it is a holiday.
  """.strip().format(new_years_day)
         )
 
-        first_trading_day_after_new_years = datetime(
-            2013, 1, 2, tzinfo=pytz.utc)
-
-        self.assertIn(first_trading_day_after_new_years, sessions,
+        first_trading_day_after_new_years = pd.Period("2013-01-02")
+        self.assertIn(first_trading_day_after_new_years, periods,
                       """
  If the day after NYE falls during the week, {0} \
  is the first trading day.
@@ -550,16 +593,13 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         # 20 21 22 23 24 25 26
         # 27 28 29 30
 
-        start_dt = Timestamp('1/1/05', tz='UTC')
-        end_dt = Timestamp('12/31/12', tz='UTC')
-        trading_days = self.calendar.trading_days(start=start_dt,
-                                                  end=end_dt)
+        start_period = pd.Period('1/1/05')
+        end_period = pd.Period('12/31/12')
+        periods = self.calendar.periods_in_range(start_period, end_period)
 
-        thanksgiving_with_four_weeks = datetime(
-            2005, 11, 24, tzinfo=pytz.utc)
+        thanksgiving_with_four_weeks = pd.Period("11/24/2005")
 
-        self.assertNotIn(thanksgiving_with_four_weeks,
-                         trading_days.index,
+        self.assertNotIn(thanksgiving_with_four_weeks, periods,
                          """
  If Nov has 4 Thursdays, {0} Thanksgiving is the last Thursady.
  """.strip().format(thanksgiving_with_four_weeks)
@@ -572,21 +612,17 @@ class NYSECalendarTestCase(ExchangeCalendarTestBase, TestCase):
         # 12 13 14 15 16 17 18
         # 19 20 21 22 23 24 25
         # 26 27 28 29 30
-        thanksgiving_with_five_weeks = datetime(
-            2006, 11, 23, tzinfo=pytz.utc)
+        thanksgiving_with_five_weeks = pd.Period("11/23/2006")
 
-        self.assertNotIn(thanksgiving_with_five_weeks,
-                         trading_days.index,
+        self.assertNotIn(thanksgiving_with_five_weeks, periods,
                          """
  If Nov has 5 Thursdays, {0} Thanksgiving is not the last week.
  """.strip().format(thanksgiving_with_five_weeks)
         )
 
-        first_trading_day_after_new_years_sunday = datetime(
-            2012, 1, 3, tzinfo=pytz.utc)
+        first_trading_day_after_new_years_sunday = pd.Period("1/3/2012")
 
-        self.assertIn(first_trading_day_after_new_years_sunday,
-                      trading_days.index,
+        self.assertIn(first_trading_day_after_new_years_sunday, periods,
                       """
  If NYE falls on a weekend, {0} the Tuesday after is the first trading day.
  """.strip().format(first_trading_day_after_new_years_sunday)

@@ -226,19 +226,11 @@ class ExchangeCalendar(with_metaclass(ABCMeta)):
     An ExchangeCalendar represents the timing information of a single market
     exchange.
 
-    The timing information is made up of two parts: sessions, and opens/closes.
+    The timing information is made up of two parts: periods, and opens/closes.
 
-    A session represents a contiguous set of minutes and has a label, like
-    "May 18". The label is purely a way to name a session and doesn't have any
-    other meaning. We represent labels using UTC midnight timestamps, where
-    only the year/month/day have any significance.
-
-    Sessions cannot overlap with each other.
-
-    Several methods in this class either take sessions or return sessions, and
-    we attempt to be clear about this in their docstrings.  It's important to
-    remember that these midnight UTC timestamps have no special significance
-    as a moment in time, and are simply labels for a period of time.
+    A period represents a contiguous set of minutes, like "May 18".
+    Importantly, a period is a chunk of time, instead of a specific point in
+    time.  Periods cannot overlap with each other.
     """
 
     def __init__(self, start=start_default, end=end_default):
