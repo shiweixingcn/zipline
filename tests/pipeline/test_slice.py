@@ -390,8 +390,8 @@ class StatisticalMethodsTestCase(WithSeededRandomPipelineEngine,
         )
         cls.start_date_index = start_date_index = 14
         cls.end_date_index = end_date_index = 18
-        cls.start_date = dates[start_date_index]
-        cls.end_date = dates[end_date_index]
+        cls.pipeline_start_date = dates[start_date_index]
+        cls.pipeline_end_date = dates[end_date_index]
 
         # Random input for factors.
         cls.col = TestingDataSet.float_col
@@ -560,6 +560,8 @@ class StatisticalMethodsTestCase(WithSeededRandomPipelineEngine,
         2D factor instead of a Slice.
         """
         dates = self.dates
+        start_date = self.pipeline_start_date
+        end_date = self.pipeline_end_date
         start_date_index = self.start_date_index
         end_date_index = self.end_date_index
         num_days = end_date_index - start_date_index + 1
@@ -597,7 +599,7 @@ class StatisticalMethodsTestCase(WithSeededRandomPipelineEngine,
         pipeline = Pipeline(
             columns={'pearson': pearson_factor, 'spearman': spearman_factor},
         )
-        results = self.run_pipeline(pipeline, self.start_date, self.end_date)
+        results = self.run_pipeline(pipeline, start_date, end_date)
         pearson_results = results['pearson'].unstack()
         spearman_results = results['spearman'].unstack()
 
@@ -657,6 +659,8 @@ class StatisticalMethodsTestCase(WithSeededRandomPipelineEngine,
         """
         regression_length = 4
         dates = self.dates
+        start_date = self.pipeline_start_date
+        end_date = self.pipeline_end_date
         start_date_index = self.start_date_index
         end_date_index = self.end_date_index
         num_days = end_date_index - start_date_index + 1
@@ -691,7 +695,7 @@ class StatisticalMethodsTestCase(WithSeededRandomPipelineEngine,
                 for output in outputs
             },
         )
-        results = self.run_pipeline(pipeline, self.start_date, self.end_date)
+        results = self.run_pipeline(pipeline, start_date, end_date)
 
         output_results = {}
         expected_output_results = {}
