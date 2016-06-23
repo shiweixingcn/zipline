@@ -186,7 +186,7 @@ from zipline.utils.input_validation import (
     ensure_timezone,
     optionally,
 )
-from zipline.utils.numpy_utils import categorical_dtype
+from zipline.utils.numpy_utils import bool_dtype, categorical_dtype
 from zipline.utils.pandas_utils import sort_values
 from zipline.utils.preprocess import preprocess
 
@@ -1142,7 +1142,9 @@ class BlazeLoader(dict):
             # column vector which is unassociated with any assets.
             adjustments_from_deltas = adjustments_from_deltas_no_sids
             column_view = op.itemgetter(np.s_[:, np.newaxis])
-            mask = np.full(shape=(len(mask), 1), fill_value=True, dtype=bool)
+            mask = np.full(
+                shape=(len(mask), 1), fill_value=True, dtype=bool_dtype,
+            )
 
         for column_idx, column in enumerate(columns):
             column_name = column.name
