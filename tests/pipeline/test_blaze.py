@@ -1574,14 +1574,8 @@ class BlazeToPipelineTestCase(WithAssetFinder, ZiplineTestCase):
 
         nassets = len(simple_asset_info)
         expected_views = keymap(pd.Timestamp, {
-            '2014-01-03': repeat_last_axis(
-                np.array([ffilled_value]),
-                nassets,
-            ),
-            '2014-01-04': repeat_last_axis(
-                np.array([1.0]),
-                nassets,
-            ),
+            '2014-01-03': np.array([[ffilled_value]]),
+            '2014-01-04': np.array([[1.0]]),
         })
 
         with tmp_asset_finder(equities=simple_asset_info) as finder:
