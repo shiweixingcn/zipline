@@ -101,20 +101,26 @@ class ExchangeCalendarTestBase(object):
             'calendars',
             filename + '.csv',
         )
-        return read_csv(
+
+        df = read_csv(
             fullpath,
             index_col=0,
             # NOTE: Merely passing parse_dates=True doesn't cause pandas to set
             # the dtype correctly, and passing all reasonable inputs to the
             # dtype kwarg cause read_csv to barf.
             parse_dates=[0, 1, 2],
-        ).tz_localize('UTC')
+        )
+
+        # the below reindexing causes the columns to lose their UTC info...
+        df.index = df.index.to_period(freq="D")
+        return df
 
     @classmethod
     def setupClass(cls):
         cls.answers = cls.load_answer_key(cls.answer_key_filename)
-        cls.start_date = cls.answers.index[0]
-        cls.end_date = cls.answers.index[-1]
+
+        cls.start_date = cls.answers.index[0].to_timestamp()
+        cls.end_date = cls.answers.index[-1].to_timestamp()
         cls.calendar = cls.calendar_class(cls.start_date, cls.end_date)
 
         cls.one_minute = pd.Timedelta(minutes=1)
@@ -143,14 +149,6 @@ class ExchangeCalendarTestBase(object):
             # increment minute by one minute, should be closed
             post_market = close_minute_utc + one_minute
             self.assertFalse(self.calendar.is_open_on_minute(post_market))
-
-    def test_open_and_close(self):
-        for index, row in self.answers.iterrows():
-            o_and_c = self.calendar.open_and_close(index)
-            self.assertEqual(o_and_c[0],
-                             row['market_open'].tz_localize('UTC'))
-            self.assertEqual(o_and_c[1],
-                             row['market_close'].tz_localize('UTC'))
 
     def _verify_minute(self, calendar, minute,
                       next_open_answer, prev_open_answer,
@@ -328,86 +326,86 @@ class ExchangeCalendarTestBase(object):
                 self.calendar.session_date(minute_before_session,
                                            direction="none")
 
-    def test_next_prev_session_label(self):
+    def test_next_prev_period(self):
         session_labels = self.answers.index[1:-2]
         max_idx = len(session_labels) - 1
 
         # the very first session
         first_session_label = self.answers.index[0]
         with self.assertRaises(ValueError):
-            self.calendar.previous_session_date(first_session_label)
+            self.calendar.previous_period(first_session_label)
 
         # all the sessions in the middle
         for idx, session in enumerate(session_labels):
             if idx < max_idx:
                 self.assertEqual(
-                    self.calendar.next_session_label(session),
+                    self.calendar.next_period(session),
                     session_labels[idx + 1]
                 )
 
             if idx > 0:
                 self.assertEqual(
-                    self.calendar.previous_session_label(session),
+                    self.calendar.previous_period(session),
                     session_labels[idx - 1]
                 )
 
         # the very last session
         last_session_label = self.answers.index[-1]
         with self.assertRaises(ValueError):
-            self.calendar.next_session_date(last_session_label)
+            self.calendar.next_period(last_session_label)
 
     @staticmethod
-    def _find_full_session(calendar):
-        for session_label in calendar.schedule.index:
-            if session_label not in calendar.early_closes:
-                return session_label
+    def _find_full_period(calendar):
+        for period in calendar.schedule.index:
+            if period not in calendar.early_closes:
+                return period
 
         return None
 
-    def test_minutes_for_session(self):
+    def test_minutes_for_period(self):
         # full session
         # find a session that isn't an early close.  start from the first
         # session, should be quick.
-        full_session_label = self._find_full_session(self.calendar)
-        if full_session_label is None:
-            raise ValueError("Cannot find a full session to test!")
+        full_period = self._find_full_period(self.calendar)
+        if full_period is None:
+            raise ValueError("Cannot find a full period to test!")
 
-        minutes = self.calendar.minutes_for_session(full_session_label)
-        _open, _close = self.calendar.open_and_close(full_session_label)
+        minutes = self.calendar.minutes_for_period(full_period)
+        _open, _close = self.calendar.open_and_close(full_period)
 
         np.testing.assert_array_equal(
             minutes,
             pd.date_range(start=_open, end=_close, freq="min")
         )
 
-        # early close session
-        early_close_session_label = self.calendar.early_closes[0]
+        # early close period
+        early_close_period = self.calendar.early_closes[0]
         minutes_for_early_close = \
-            self.calendar.minutes_for_session(early_close_session_label)
-        _open, _close = self.calendar.open_and_close(early_close_session_label)
+            self.calendar.minutes_for_period(early_close_period)
+        _open, _close = self.calendar.open_and_close(early_close_period)
 
         np.testing.assert_array_equal(
             minutes_for_early_close,
             pd.date_range(start=_open, end=_close, freq="min")
         )
 
-    def test_exchange_sessions_in_range(self):
+    def test_periods_in_range(self):
         # pick two sessions
-        session_count = len(self.calendar.schedule.index)
+        period_count = len(self.calendar.schedule.index)
 
-        first_idx = session_count / 3
+        first_idx = period_count / 3
         second_idx = 2 * first_idx
 
-        first_session = self.calendar.schedule.index[first_idx]
-        second_session = self.calendar.schedule.index[second_idx]
+        first_period = self.calendar.schedule.index[first_idx]
+        second_period = self.calendar.schedule.index[second_idx]
 
         answer_key = \
             self.calendar.schedule.index[first_idx:second_idx + 1]
 
         np.testing.assert_array_equal(
             answer_key,
-            self.calendar.exchange_sessions_in_range(first_session,
-                                                     second_session)
+            self.calendar.exchange_sessions_in_range(first_period,
+                                                     second_period)
         )
 
     def test_exchange_minutes_in_range(self):
@@ -466,8 +464,8 @@ class ExchangeCalendarTestBase(object):
     def test_open_and_close(self):
         for index, row in self.answers.iterrows():
             session_label = row.name
-            open_answer = row.market_open.tz_localize("UTC")
-            close_answer = row.market_close.tz_localize("UTC")
+            open_answer = row.market_open.tz_localize('UTC')
+            close_answer = row.market_close.tz_localize('UTC')
 
             found_open, found_close = \
                 self.calendar.open_and_close(session_label)
