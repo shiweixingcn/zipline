@@ -40,11 +40,7 @@ from zipline.testing import (
 )
 from zipline.testing.fixtures import WithAssetFinder
 from zipline.testing.predicates import assert_equal, assert_isidentical
-from zipline.utils.numpy_utils import (
-    float64_dtype,
-    int64_dtype,
-    repeat_last_axis,
-)
+from zipline.utils.numpy_utils import float64_dtype, int64_dtype
 
 
 nameof = op.attrgetter('name')
@@ -792,16 +788,16 @@ class BlazeToPipelineTestCase(WithAssetFinder, ZiplineTestCase):
         )
 
         p = Pipeline()
-        factor_inputs = []
+        macro_inputs = []
         for column_name in add:
             column = getattr(ds, column_name)
-            factor_inputs.append(column)
+            macro_inputs.append(column)
             with self.assertRaises(UnsupportedPipelineOutput):
                 # Single column output terms cannot be added to a pipeline.
                 p.add(column.latest, column_name)
 
         class UsesMacroInputs(CustomFactor):
-            inputs = factor_inputs
+            inputs = macro_inputs
             window_length = 1
 
             def compute(self, today, assets, out, *inputs):

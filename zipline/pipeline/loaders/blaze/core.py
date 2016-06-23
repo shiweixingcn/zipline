@@ -1144,7 +1144,6 @@ class BlazeLoader(dict):
             column_view = op.itemgetter(np.s_[:, np.newaxis])
             mask = np.full(shape=(len(mask), 1), fill_value=True, dtype=bool)
 
-
         for column_idx, column in enumerate(columns):
             column_name = column.name
             yield column, AdjustedArray(
