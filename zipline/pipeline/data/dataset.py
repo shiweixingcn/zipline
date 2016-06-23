@@ -30,7 +30,7 @@ class Column(object):
         self.dtype = dtype
         self.missing_value = missing_value
 
-    def bind(self, name):
+    def bind(self, name, ndim):
         """
         Bind a `Column` object to its name.
         """
@@ -38,6 +38,7 @@ class Column(object):
             dtype=self.dtype,
             missing_value=self.missing_value,
             name=name,
+            ndim=ndim,
         )
 
 
@@ -49,7 +50,7 @@ class _BoundColumnDescr(object):
     This exists so that subclasses of DataSets don't share columns with their
     parent classes.
     """
-    def __init__(self, dtype, missing_value, name):
+    def __init__(self, dtype, missing_value, name, ndim):
         # Validating and calculating default missing values here guarantees
         # that we fail quickly if the user passes an unsupporte dtype or fails
         # to provide a missing value for a dtype that requires one
@@ -71,6 +72,7 @@ class _BoundColumnDescr(object):
                 " dtype.".format(dtype=dtype, name=name)
             )
         self.name = name
+        self.ndim = ndim
 
     def __get__(self, instance, owner):
         """
@@ -84,6 +86,7 @@ class _BoundColumnDescr(object):
             missing_value=self.missing_value,
             dataset=owner,
             name=self.name,
+            ndim=self.ndim,
         )
 
 
@@ -115,7 +118,7 @@ class BoundColumn(LoadableTerm):
     inputs = ()
     window_safe = True
 
-    def __new__(cls, dtype, missing_value, dataset, name):
+    def __new__(cls, dtype, missing_value, dataset, name, ndim):
         return super(BoundColumn, cls).__new__(
             cls,
             domain=dataset.domain,
@@ -123,6 +126,7 @@ class BoundColumn(LoadableTerm):
             missing_value=missing_value,
             dataset=dataset,
             name=name,
+            ndim=ndim,
         )
 
     def _init(self, dataset, name, *args, **kwargs):
@@ -176,6 +180,7 @@ class BoundColumn(LoadableTerm):
             inputs=(self,),
             dtype=dtype,
             missing_value=self.missing_value,
+            ndim=self.ndim,
         )
 
     def __repr__(self):
@@ -205,7 +210,9 @@ class DataSetMeta(type):
         for maybe_colname, maybe_column in iteritems(dict_):
             if isinstance(maybe_column, Column):
                 # add column names defined on our class
-                bound_column_descr = maybe_column.bind(maybe_colname)
+                bound_column_descr = maybe_column.bind(
+                    maybe_colname, newtype.ndim,
+                )
                 setattr(newtype, maybe_colname, bound_column_descr)
                 column_names.add(maybe_colname)
 
@@ -227,3 +234,4 @@ class DataSetMeta(type):
 
 class DataSet(with_metaclass(DataSetMeta, object)):
     domain = None
+    ndim = 2

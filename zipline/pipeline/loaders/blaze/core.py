@@ -139,7 +139,6 @@ from __future__ import division, absolute_import
 
 from abc import ABCMeta, abstractproperty
 from collections import namedtuple, defaultdict
-from copy import copy
 from functools import partial
 from itertools import count
 import warnings
@@ -187,10 +186,7 @@ from zipline.utils.input_validation import (
     ensure_timezone,
     optionally,
 )
-from zipline.utils.numpy_utils import (
-    categorical_dtype,
-    repeat_last_axis,
-)
+from zipline.utils.numpy_utils import categorical_dtype
 from zipline.utils.pandas_utils import sort_values
 from zipline.utils.preprocess import preprocess
 
@@ -337,7 +333,7 @@ def new_dataset(expr, deltas, missing_values):
     the same type.
     """
     missing_values = dict(missing_values)
-    columns = {}
+    columns = {'ndim': 2 if SID_FIELD_NAME in expr.fields else 1}
     for name, type_ in expr.dshape.measure.fields:
         # Don't generate a column for sid or timestamp, since they're
         # implicitly the labels if the arrays that will be passed to pipeline
@@ -1145,7 +1141,8 @@ class BlazeLoader(dict):
             # If we do not have sids, use the column view to make a single
             # column vector which is unassociated with any assets.
             adjustments_from_deltas = adjustments_from_deltas_no_sids
-            column_view = itemgetter(np.s_[:, np.newaxis])
+            column_view = op.itemgetter(np.s_[:, np.newaxis])
+            mask = np.full(shape=(len(mask), 1), fill_value=True, dtype=bool)
 
 
         for column_idx, column in enumerate(columns):
