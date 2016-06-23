@@ -12,7 +12,7 @@ import blaze as bz
 from datashape import dshape, var, Record
 from nose_parameterized import parameterized
 import numpy as np
-from numpy.testing.utils import assert_array_almost_equal, assert_equal
+from numpy.testing.utils import assert_array_almost_equal
 from odo import odo
 import pandas as pd
 from pandas.util.testing import assert_frame_equal
@@ -39,12 +39,12 @@ from zipline.testing import (
     tmp_asset_finder,
 )
 from zipline.testing.fixtures import WithAssetFinder
+from zipline.testing.predicates import assert_equal, assert_isidentical
 from zipline.utils.numpy_utils import (
     float64_dtype,
     int64_dtype,
     repeat_last_axis,
 )
-from zipline.testing.predicates import assert_equal, assert_isidentical
 
 
 nameof = op.attrgetter('name')
@@ -787,7 +787,7 @@ class BlazeToPipelineTestCase(WithAssetFinder, ZiplineTestCase):
         ds = from_blaze(
             expr,
             loader=loader,
-            no_deltas_rule=no_deltas_rules.ignore,
+            no_deltas_rule='ignore',
             missing_values=self.missing_values,
         )
 
