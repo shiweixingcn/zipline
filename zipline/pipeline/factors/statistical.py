@@ -194,8 +194,9 @@ class RollingLinearRegression(CustomFactor, SingleInputMixin):
                 regress(y=factor_data[:, i], x=other_data[:, i])
         else:
             # Second input is a slice, so always compute with its only column.
+            slice_data = other_data[:, 0]
             for i in range(len(out)):
-                regress(y=factor_data[:, i], x=other_data[:, 0])
+                regress(y=factor_data[:, i], x=slice_data)
 
 
 class RollingPearsonOfReturns(RollingPearson):
