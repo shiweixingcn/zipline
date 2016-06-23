@@ -38,6 +38,16 @@ class _RollingCorrelation(CustomFactor, SingleInputMixin):
             mask=mask,
         )
 
+    def compute(self, today, assets, out, factor_data, other_data, corr_func):
+        if other_data.shape[1] > 1:
+            # Both inputs are 2D, so compute sid-by-sid.
+            for i in range(len(out)):
+                out[i] = corr_func(factor_data[:, i], other_data[:, i])[0]
+        else:
+            # Second input is a slice, so always compute with its only column.
+            for i in range(len(out)):
+                out[i] = corr_func(factor_data[:, i], other_data[:, 0])[0]
+
 
 class RollingPearson(_RollingCorrelation):
     """
@@ -71,14 +81,9 @@ class RollingPearson(_RollingCorrelation):
     instance of this class.
     """
     def compute(self, today, assets, out, factor_data, other_data):
-        if other_data.shape[1] > 1:
-            # Both inputs are 2D, so compute sid-by-sid.
-            for i in range(len(out)):
-                out[i] = pearsonr(factor_data[:, i], other_data[:, i])[0]
-        else:
-            # Second input is a slice, so always compute with its only column.
-            for i in range(len(out)):
-                out[i] = pearsonr(factor_data[:, i], other_data[:, 0])[0]
+        super(RollingPearson, self).compute(
+            today, assets, out, factor_data, other_data, pearsonr,
+        )
 
 
 class RollingSpearman(_RollingCorrelation):
@@ -113,14 +118,9 @@ class RollingSpearman(_RollingCorrelation):
     instance of this class.
     """
     def compute(self, today, assets, out, factor_data, other_data):
-        if other_data.shape[1] > 1:
-            # Both inputs are 2D, so compute sid-by-sid.
-            for i in range(len(out)):
-                out[i] = spearmanr(factor_data[:, i], other_data[:, i])[0]
-        else:
-            # Second input is a slice, so always compute with its only column.
-            for i in range(len(out)):
-                out[i] = spearmanr(factor_data[:, i], other_data[:, 0])[0]
+        super(RollingSpearman, self).compute(
+            today, assets, out, factor_data, other_data, spearmanr,
+        )
 
 
 class RollingLinearRegression(CustomFactor, SingleInputMixin):
